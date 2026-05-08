@@ -5,6 +5,7 @@ mod env_manager;
 mod downloader;
 mod config;
 mod app;
+mod utils;
 
 use eframe::egui;
 use app::NvmApp;

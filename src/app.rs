@@ -10,6 +10,7 @@ use crate::config::AppConfig;
 use crate::env_manager;
 use crate::downloader;
 use crate::version_service;
+use crate::utils;
 
 pub struct NvmApp {
     pub config: AppConfig,
@@ -74,27 +75,175 @@ impl NvmApp {
     }
 
     pub fn update_config_and_env(&mut self, old_base_dir: Option<&PathBuf>) {
-        let _ = self.config.save();
+        if let Err(e) = self.config.save() {
+            self.error = Some(format!("Không thể lưu cấu hình: {}", e));
+            return;
+        }
         
         if let Some(ref version) = self.config.current_version {
-            let version_path = self.config.versions_dir().join(format!("node-{}-win-x64", version));
+            let version_dir_name = utils::get_version_dir_name(version);
+            let version_path = self.config.versions_dir().join(&version_dir_name);
+            
             if version_path.exists() {
                 let use_shared = self.config.version_configs.get(version).cloned().unwrap_or(false);
                 
                 let modules_dir = if use_shared {
                     let m_dir = self.config.modules_dir();
                     if !m_dir.exists() {
-                        let _ = std::fs::create_dir_all(&m_dir);
+                        if let Err(e) = std::fs::create_dir_all(&m_dir) {
+                            self.error = Some(format!("Không thể tạo thư mục modules: {}", e));
+                            return;
+                        }
                     }
                     Some(m_dir)
                 } else {
                     None
                 };
                 
-                let _ = env_manager::update_user_path(&version_path, modules_dir.as_ref(), &self.config.base_dir, old_base_dir);
-                let _ = env_manager::update_npmrc(&self.config.modules_dir(), use_shared);
+                if let Err(e) = env_manager::update_user_path(&version_path, modules_dir.as_ref(), &self.config.base_dir, old_base_dir) {
+                    self.error = Some(format!("Lỗi cập nhật PATH: {}", e));
+                }
+                if let Err(e) = env_manager::update_npmrc(&self.config.modules_dir(), use_shared) {
+                    self.error = Some(format!("Lỗi cập nhật .npmrc: {}", e));
+                }
             }
         }
+    }
+
+    fn handle_action(&mut self, action: Action) {
+        match action {
+            Action::Refresh => self.refresh_versions(),
+            Action::UpdateConfig => self.update_config_and_env(None),
+            Action::Switch(v) => self.switch_version(v),
+            Action::Install(v) => self.install_version(v),
+            Action::Uninstall(v) => self.uninstall_version(v),
+            Action::MoveStorage(path) => self.move_storage(path),
+        }
+    }
+
+    fn refresh_versions(&mut self) {
+        self.is_loading = true;
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            match version_service::fetch_node_versions() {
+                Ok(v) => { let _ = tx.send(AppMessage::VersionsFetched(v)); },
+                Err(e) => { let _ = tx.send(AppMessage::FetchError(e.to_string())); }
+            }
+        });
+    }
+
+    fn switch_version(&mut self, v: String) {
+        self.config.current_version = Some(v.clone());
+        self.update_config_and_env(None);
+        self.status_msg = format!("Đã chuyển sang {}", v);
+    }
+
+    fn install_version(&mut self, v: String) {
+        self.is_loading = true;
+        self.status_msg = format!("Đang cài đặt {}...", v);
+        let tx = self.tx.clone();
+        let base_dir = self.config.versions_dir();
+        thread::spawn(move || {
+            match downloader::download_and_extract(&v, &base_dir) {
+                Ok(_) => { let _ = tx.send(AppMessage::InstallFinished(v)); },
+                Err(e) => { let _ = tx.send(AppMessage::InstallError(e.to_string())); }
+            }
+        });
+    }
+
+    fn uninstall_version(&mut self, v: String) {
+        let version_dir_name = utils::get_version_dir_name(&v);
+        let version_path = self.config.versions_dir().join(version_dir_name);
+        if version_path.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&version_path) {
+                self.error = Some(format!("Không thể xóa thư mục: {}", e));
+            } else {
+                self.config.installed_versions.retain(|iv| iv != &v);
+                self.config.version_configs.remove(&v);
+                if let Err(e) = self.config.save() {
+                    self.error = Some(format!("Lỗi lưu cấu hình sau khi xóa: {}", e));
+                }
+                self.status_msg = format!("Đã xóa phiên bản {}", v);
+            }
+        }
+    }
+
+    fn move_storage(&mut self, path: PathBuf) {
+        self.is_loading = true;
+        self.status_msg = "Đang chuẩn bị di chuyển...".to_string();
+        self.error = None;
+        let tx = self.tx.clone();
+        let old_base = self.config.base_dir.clone();
+        let installed_versions = self.config.installed_versions.clone();
+        
+        thread::spawn(move || {
+            if !path.exists() {
+                if let Err(e) = std::fs::create_dir_all(&path) {
+                    let _ = tx.send(AppMessage::MoveError(format!("Không thể tạo thư mục mới: {}", e)));
+                    return;
+                }
+            }
+
+            let mut total_files = 0;
+            let versions_from_dir = old_base.join("versions");
+            for v in &installed_versions {
+                total_files += count_files(&versions_from_dir.join(utils::get_version_dir_name(v)));
+            }
+            total_files += count_files(&old_base.join("modules"));
+
+            let _ = tx.send(AppMessage::StatusUpdate(format!("Tổng cộng {} files. Bắt đầu di chuyển...", total_files)));
+
+            let mut copied_count = 0;
+            let mut last_update = Instant::now();
+            let versions_to_dir = path.join("versions");
+            
+            if versions_from_dir.exists() {
+                if let Err(e) = std::fs::create_dir_all(&versions_to_dir) {
+                    let _ = tx.send(AppMessage::MoveError(format!("Không thể tạo thư mục versions: {}", e)));
+                    return;
+                }
+                for v in installed_versions {
+                    let dir_name = utils::get_version_dir_name(&v);
+                    let from = versions_from_dir.join(&dir_name);
+                    let to = versions_to_dir.join(&dir_name);
+                    if from.exists() {
+                        if std::fs::rename(&from, &to).is_err() {
+                            if let Err(e) = copy_dir_all(&from, &to, &tx, &mut last_update, &mut copied_count, total_files) {
+                                let _ = tx.send(AppMessage::MoveError(format!("Lỗi copy {}: {}", dir_name, e)));
+                                return;
+                            }
+                            let _ = std::fs::remove_dir_all(&from);
+                        } else {
+                            copied_count += count_files(&to);
+                            let _ = tx.send(AppMessage::MoveProgress(copied_count, total_files));
+                        }
+                    }
+                }
+                if is_dir_empty(&versions_from_dir) {
+                    let _ = std::fs::remove_dir(&versions_from_dir);
+                }
+            }
+
+            let modules_from = old_base.join("modules");
+            let modules_to = path.join("modules");
+            if modules_from.exists() {
+                if std::fs::rename(&modules_from, &modules_to).is_err() {
+                    if let Err(e) = copy_dir_all(&modules_from, &modules_to, &tx, &mut last_update, &mut copied_count, total_files) {
+                        let _ = tx.send(AppMessage::MoveError(format!("Lỗi copy modules: {}", e)));
+                        return;
+                    }
+                    let _ = std::fs::remove_dir_all(&modules_from);
+                } else {
+                    copied_count += count_files(&modules_to);
+                    let _ = tx.send(AppMessage::MoveProgress(copied_count, total_files));
+                }
+                if modules_from.exists() && is_dir_empty(&modules_from) {
+                    let _ = std::fs::remove_dir(&modules_from);
+                }
+            }
+
+            let _ = tx.send(AppMessage::MoveFinished(path));
+        });
     }
 }
 
@@ -112,7 +261,9 @@ impl eframe::App for NvmApp {
                 }
                 AppMessage::InstallFinished(v) => {
                     self.config.installed_versions.push(v);
-                    let _ = self.config.save();
+                    if let Err(e) = self.config.save() {
+                        self.error = Some(format!("Lỗi lưu cấu hình: {}", e));
+                    }
                     self.status_msg = "Cài đặt thành công!".to_string();
                     self.is_loading = false;
                 }
@@ -248,7 +399,9 @@ impl eframe::App for NvmApp {
                                                     if is_current {
                                                         pending_action = Some(Action::UpdateConfig);
                                                     } else {
-                                                        let _ = self.config.save();
+                                                        if let Err(e) = self.config.save() {
+                                                            self.error = Some(format!("Lỗi lưu cấu hình: {}", e));
+                                                        }
                                                     }
                                                 }
                                             } else {
@@ -280,121 +433,7 @@ impl eframe::App for NvmApp {
         });
 
         if let Some(action) = pending_action {
-            match action {
-                Action::Refresh => {
-                    self.is_loading = true;
-                    let tx = self.tx.clone();
-                    thread::spawn(move || {
-                        match version_service::fetch_node_versions() {
-                            Ok(v) => { let _ = tx.send(AppMessage::VersionsFetched(v)); },
-                            Err(e) => { let _ = tx.send(AppMessage::FetchError(e.to_string())); }
-                        }
-                    });
-                }
-                Action::UpdateConfig => {
-                    self.update_config_and_env(None);
-                }
-                Action::Switch(v) => {
-                    self.config.current_version = Some(v.clone());
-                    self.update_config_and_env(None);
-                    self.status_msg = format!("Đã chuyển sang {}", v);
-                }
-                Action::Install(v) => {
-                    self.is_loading = true;
-                    self.status_msg = format!("Đang cài đặt {}...", v);
-                    let tx = self.tx.clone();
-                    let base_dir = self.config.versions_dir();
-                    thread::spawn(move || {
-                        match downloader::download_and_extract(&v, &base_dir) {
-                            Ok(_) => { let _ = tx.send(AppMessage::InstallFinished(v)); },
-                            Err(e) => { let _ = tx.send(AppMessage::InstallError(e.to_string())); }
-                        }
-                    });
-                }
-                Action::Uninstall(v) => {
-                    let version_path = self.config.versions_dir().join(format!("node-{}-win-x64", v));
-                    if version_path.exists() {
-                        if let Err(e) = std::fs::remove_dir_all(&version_path) {
-                            self.error = Some(format!("Không thể xóa thư mục: {}", e));
-                        } else {
-                            self.config.installed_versions.retain(|iv| iv != &v);
-                            self.config.version_configs.remove(&v);
-                            let _ = self.config.save();
-                            self.status_msg = format!("Đã xóa phiên bản {}", v);
-                        }
-                    }
-                }
-                Action::MoveStorage(path) => {
-                    self.is_loading = true;
-                    self.status_msg = "Đang chuẩn bị di chuyển...".to_string();
-                    let tx = self.tx.clone();
-                    let old_base = self.config.base_dir.clone();
-                    let installed_versions = self.config.installed_versions.clone();
-                    
-                    thread::spawn(move || {
-                        if !path.exists() {
-                            let _ = std::fs::create_dir_all(&path);
-                        }
-
-                        let mut total_files = 0;
-                        let versions_from_dir = old_base.join("versions");
-                        for v in &installed_versions {
-                            total_files += count_files(&versions_from_dir.join(format!("node-{}-win-x64", v)));
-                        }
-                        total_files += count_files(&old_base.join("modules"));
-
-                        let _ = tx.send(AppMessage::StatusUpdate(format!("Tổng cộng {} files. Bắt đầu di chuyển...", total_files)));
-
-                        let mut copied_count = 0;
-                        let mut last_update = Instant::now();
-                        let versions_to_dir = path.join("versions");
-                        
-                        if versions_from_dir.exists() {
-                            let _ = std::fs::create_dir_all(&versions_to_dir);
-                            for v in installed_versions {
-                                let dir_name = format!("node-{}-win-x64", v);
-                                let from = versions_from_dir.join(&dir_name);
-                                let to = versions_to_dir.join(&dir_name);
-                                if from.exists() {
-                                    if std::fs::rename(&from, &to).is_err() {
-                                        if let Err(e) = copy_dir_all(&from, &to, &tx, &mut last_update, &mut copied_count, total_files) {
-                                            let _ = tx.send(AppMessage::MoveError(format!("Lỗi copy {}: {}", dir_name, e)));
-                                            return;
-                                        }
-                                        let _ = std::fs::remove_dir_all(&from);
-                                    } else {
-                                        copied_count += count_files(&to);
-                                        let _ = tx.send(AppMessage::MoveProgress(copied_count, total_files));
-                                    }
-                                }
-                            }
-                            if is_dir_empty(&versions_from_dir) {
-                                let _ = std::fs::remove_dir(&versions_from_dir);
-                            }
-                        }
-
-                        let modules_from = old_base.join("modules");
-                        let modules_to = path.join("modules");
-                        if modules_from.exists() {
-                                if std::fs::rename(&modules_from, &modules_to).is_err() {
-                                    if let Err(e) = copy_dir_all(&modules_from, &modules_to, &tx, &mut last_update, &mut copied_count, total_files) {
-                                        let _ = tx.send(AppMessage::MoveError(format!("Lỗi copy modules: {}", e)));
-                                        return;
-                                    }
-                                    let _ = std::fs::remove_dir_all(&modules_from);
-                                } else {
-                                copied_count += count_files(&modules_to);
-                                let _ = tx.send(AppMessage::MoveProgress(copied_count, total_files));
-                            }
-                            if modules_from.exists() && is_dir_empty(&modules_from) {
-                                let _ = std::fs::remove_dir(&modules_from);
-                            }
-                        }
-
-                        let _ = tx.send(AppMessage::MoveFinished(path));
-                    });
-                }
-            }
+            self.handle_action(action);
         }
 
         if self.is_loading {
@@ -403,7 +442,7 @@ impl eframe::App for NvmApp {
     }
 }
 
-// Các hàm bổ trợ UI/Logic
+// Các hàm bổ trợ Logic nội bộ
 fn copy_dir_all(
     src: &std::path::Path, 
     dst: &std::path::Path, 
@@ -456,13 +495,19 @@ fn is_dir_empty(path: &std::path::Path) -> bool {
 
 fn setup_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    if let Ok(font_data) = std::fs::read("C:\\Windows\\Fonts\\arial.ttf") {
+    #[cfg(windows)]
+    let font_path = "C:\\Windows\\Fonts\\arial.ttf";
+    #[cfg(unix)]
+    let font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+
+    if let Ok(font_data) = std::fs::read(font_path) {
         fonts.font_data.insert(
-            "arial_sys".to_owned(),
+            "sys_font".to_owned(),
             egui::FontData::from_owned(font_data).into(),
         );
-        fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap()
-            .insert(0, "arial_sys".to_owned());
+        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+            family.insert(0, "sys_font".to_owned());
+        }
     }
     ctx.set_fonts(fonts);
 }
