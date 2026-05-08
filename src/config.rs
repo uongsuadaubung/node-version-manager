@@ -46,10 +46,11 @@ impl AppConfig {
         }
     }
 
-    pub fn save(&self) -> std::io::Result<()> {
+    pub fn save(&self) -> anyhow::Result<()> {
         let path = Self::config_file();
-        let content = serde_json::to_string_pretty(self).unwrap();
-        fs::write(path, content)
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
     }
     
     pub fn versions_dir(&self) -> PathBuf {

@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use reqwest::blocking::Client;
-use std::error::Error;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeVersion {
@@ -17,16 +16,9 @@ impl NodeVersion {
             _ => false,
         }
     }
-
-    pub fn lts_name(&self) -> String {
-        match &self.lts {
-            serde_json::Value::String(s) => s.clone(),
-            _ => "No".to_string(),
-        }
-    }
 }
 
-pub fn fetch_node_versions() -> Result<Vec<NodeVersion>, Box<dyn Error>> {
+pub fn fetch_node_versions() -> anyhow::Result<Vec<NodeVersion>> {
     let client = Client::new();
     let res = client
         .get("https://nodejs.org/dist/index.json")

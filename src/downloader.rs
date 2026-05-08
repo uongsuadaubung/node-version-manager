@@ -4,14 +4,14 @@ use std::path::PathBuf;
 use zip::ZipArchive;
 use reqwest::blocking::Client;
 
-pub fn download_and_extract(version: &str, dest_base: &PathBuf) -> Result<PathBuf, Box<dyn std::error::Error>> {
+pub fn download_and_extract(version: &str, dest_base: &PathBuf) -> anyhow::Result<PathBuf> {
     // Ví dụ: v20.11.0 -> https://nodejs.org/dist/v20.11.0/node-v20.11.0-win-x64.zip
     let url = format!("https://nodejs.org/dist/{}/node-{}-win-x64.zip", version, version);
     let client = Client::new();
     let mut response = client.get(url).send()?;
     
     if !response.status().is_success() {
-        return Err(format!("Download failed with status: {}", response.status()).into());
+        anyhow::bail!("Download failed with status: {}", response.status());
     }
     
     if !dest_base.exists() {
