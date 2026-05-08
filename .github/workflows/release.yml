@@ -35,6 +35,8 @@ jobs:
 
       - name: Build
         run: cargo zigbuild --target ${{ matrix.target }} --release
+        env:
+          AWS_LC_SYS_NO_JITTER_ENTROPY: 1
 
       - name: Prepare Assets
         run: |
