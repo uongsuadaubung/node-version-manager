@@ -20,3 +20,10 @@ flate2 = "1.1.9"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 winreg = "0.56.0"
+
+[profile.release]
+opt-level = "z"      # Tối ưu hóa kích thước tối đa
+lto = true           # Link Time Optimization
+codegen-units = 1    # Tối ưu hóa toàn cục
+panic = "abort"      # Loại bỏ stack unwinding
+strip = true         # Xóa bỏ debug symbols
