@@ -23,6 +23,7 @@ pub struct NvmApp {
     pub status_msg: String,
     pub tx: Sender<AppMessage>,
     pub rx: Receiver<AppMessage>,
+    pub i18n: crate::i18n::I18n,
 }
 
 pub enum AppMessage {
@@ -43,6 +44,8 @@ pub enum Action {
     Install(String),
     Uninstall(String),
     MoveStorage(PathBuf),
+    ChangeLanguage(String),
+    Unuse,
 }
 
 impl NvmApp {
@@ -60,23 +63,27 @@ impl NvmApp {
             }
         });
 
+        let config = AppConfig::load();
+        let lang = config.language.clone();
+
         Self {
-            config: AppConfig::load(),
+            config,
             versions: Vec::new(),
             is_loading: true,
             lts_only: true,
             search_query: "".to_string(),
             move_progress: None,
             error: None,
-            status_msg: "Đang sẵn sàng...".to_string(),
+            status_msg: crate::i18n::I18n::new(&lang).t("status.ready"),
             tx,
             rx,
+            i18n: crate::i18n::I18n::new(&lang),
         }
     }
 
     pub fn update_config_and_env(&mut self, old_base_dir: Option<&PathBuf>) {
         if let Err(e) = self.config.save() {
-            self.error = Some(format!("Không thể lưu cấu hình: {}", e));
+            self.error = Some(self.i18n.t("status.saving_config_error").replace("{}", &e.to_string()));
             return;
         }
         
@@ -91,7 +98,7 @@ impl NvmApp {
                     let m_dir = self.config.modules_dir();
                     if !m_dir.exists() {
                         if let Err(e) = std::fs::create_dir_all(&m_dir) {
-                            self.error = Some(format!("Không thể tạo thư mục modules: {}", e));
+                            self.error = Some(self.i18n.t("status.create_modules_error").replace("{}", &e.to_string()));
                             return;
                         }
                     }
@@ -100,12 +107,19 @@ impl NvmApp {
                     None
                 };
                 
-                if let Err(e) = env_manager::update_user_path(&version_path, modules_dir.as_ref(), &self.config.base_dir, old_base_dir) {
-                    self.error = Some(format!("Lỗi cập nhật PATH: {}", e));
+                if let Err(e) = env_manager::update_user_path(Some(&version_path), modules_dir.as_ref(), &self.config.base_dir, old_base_dir) {
+                    self.error = Some(self.i18n.t("status.update_path_error").replace("{}", &e.to_string()));
                 }
                 if let Err(e) = env_manager::update_npmrc(&self.config.modules_dir(), use_shared) {
-                    self.error = Some(format!("Lỗi cập nhật .npmrc: {}", e));
+                    self.error = Some(self.i18n.t("status.update_npmrc_error").replace("{}", &e.to_string()));
                 }
+            }
+        } else {
+            if let Err(e) = env_manager::update_user_path(None, None, &self.config.base_dir, old_base_dir) {
+                self.error = Some(self.i18n.t("status.update_path_error").replace("{}", &e.to_string()));
+            }
+            if let Err(e) = env_manager::update_npmrc(&self.config.modules_dir(), false) {
+                self.error = Some(self.i18n.t("status.update_npmrc_error").replace("{}", &e.to_string()));
             }
         }
     }
@@ -118,6 +132,12 @@ impl NvmApp {
             Action::Install(v) => self.install_version(v),
             Action::Uninstall(v) => self.uninstall_version(v),
             Action::MoveStorage(path) => self.move_storage(path),
+            Action::ChangeLanguage(lang) => {
+                self.config.language = lang.clone();
+                self.i18n = crate::i18n::I18n::new(&lang);
+                self.update_config_and_env(None);
+            }
+            Action::Unuse => self.unuse_version(),
         }
     }
 
@@ -132,15 +152,21 @@ impl NvmApp {
         });
     }
 
+    fn unuse_version(&mut self) {
+        self.config.current_version = None;
+        self.update_config_and_env(None);
+        self.status_msg = self.i18n.t("status.unused_version");
+    }
+
     fn switch_version(&mut self, v: String) {
         self.config.current_version = Some(v.clone());
         self.update_config_and_env(None);
-        self.status_msg = format!("Đã chuyển sang {}", v);
+        self.status_msg = self.i18n.t("status.switched_to").replace("{}", &v);
     }
 
     fn install_version(&mut self, v: String) {
         self.is_loading = true;
-        self.status_msg = format!("Đang cài đặt {}...", v);
+        self.status_msg = self.i18n.t("status.installing").replace("{}", &v);
         let tx = self.tx.clone();
         let base_dir = self.config.versions_dir();
         thread::spawn(move || {
@@ -156,21 +182,21 @@ impl NvmApp {
         let version_path = self.config.versions_dir().join(version_dir_name);
         if version_path.exists() {
             if let Err(e) = std::fs::remove_dir_all(&version_path) {
-                self.error = Some(format!("Không thể xóa thư mục: {}", e));
+                self.error = Some(self.i18n.t("status.delete_dir_error").replace("{}", &e.to_string()));
             } else {
                 self.config.installed_versions.retain(|iv| iv != &v);
                 self.config.version_configs.remove(&v);
                 if let Err(e) = self.config.save() {
-                    self.error = Some(format!("Lỗi lưu cấu hình sau khi xóa: {}", e));
+                    self.error = Some(self.i18n.t("status.save_config_after_delete_error").replace("{}", &e.to_string()));
                 }
-                self.status_msg = format!("Đã xóa phiên bản {}", v);
+                self.status_msg = self.i18n.t("status.deleted_version").replace("{}", &v);
             }
         }
     }
 
     fn move_storage(&mut self, path: PathBuf) {
         self.is_loading = true;
-        self.status_msg = "Đang chuẩn bị di chuyển...".to_string();
+        self.status_msg = self.i18n.t("status.preparing_move");
         self.error = None;
         let tx = self.tx.clone();
         let old_base = self.config.base_dir.clone();
@@ -179,7 +205,7 @@ impl NvmApp {
         thread::spawn(move || {
             if !path.exists() {
                 if let Err(e) = std::fs::create_dir_all(&path) {
-                    let _ = tx.send(AppMessage::MoveError(format!("Không thể tạo thư mục mới: {}", e)));
+                    let _ = tx.send(AppMessage::MoveError(crate::i18n::I18n::new("en").t("status.create_new_dir_error").replace("{}", &e.to_string())));
                     return;
                 }
             }
@@ -191,7 +217,7 @@ impl NvmApp {
             }
             total_files += count_files(&old_base.join("modules"));
 
-            let _ = tx.send(AppMessage::StatusUpdate(format!("Tổng cộng {} files. Bắt đầu di chuyển...", total_files)));
+            let _ = tx.send(AppMessage::StatusUpdate(crate::i18n::I18n::new("en").t("status.moving_files").replace("{}", &total_files.to_string())));
 
             let mut copied_count = 0;
             let mut last_update = Instant::now();
@@ -199,7 +225,7 @@ impl NvmApp {
             
             if versions_from_dir.exists() {
                 if let Err(e) = std::fs::create_dir_all(&versions_to_dir) {
-                    let _ = tx.send(AppMessage::MoveError(format!("Không thể tạo thư mục versions: {}", e)));
+                    let _ = tx.send(AppMessage::MoveError(crate::i18n::I18n::new("en").t("status.create_versions_dir_error").replace("{}", &e.to_string())));
                     return;
                 }
                 for v in installed_versions {
@@ -209,7 +235,7 @@ impl NvmApp {
                     if from.exists() {
                         if std::fs::rename(&from, &to).is_err() {
                             if let Err(e) = copy_dir_all(&from, &to, &tx, &mut last_update, &mut copied_count, total_files) {
-                                let _ = tx.send(AppMessage::MoveError(format!("Lỗi copy {}: {}", dir_name, e)));
+                                let _ = tx.send(AppMessage::MoveError(crate::i18n::I18n::new("en").t("status.copy_error").replacen("{}", &dir_name, 1).replacen("{}", &e.to_string(), 1)));
                                 return;
                             }
                             let _ = std::fs::remove_dir_all(&from);
@@ -229,7 +255,7 @@ impl NvmApp {
             if modules_from.exists() {
                 if std::fs::rename(&modules_from, &modules_to).is_err() {
                     if let Err(e) = copy_dir_all(&modules_from, &modules_to, &tx, &mut last_update, &mut copied_count, total_files) {
-                        let _ = tx.send(AppMessage::MoveError(format!("Lỗi copy modules: {}", e)));
+                        let _ = tx.send(AppMessage::MoveError(crate::i18n::I18n::new("en").t("status.copy_modules_error").replace("{}", &e.to_string())));
                         return;
                     }
                     let _ = std::fs::remove_dir_all(&modules_from);
@@ -262,9 +288,9 @@ impl eframe::App for NvmApp {
                 AppMessage::InstallFinished(v) => {
                     self.config.installed_versions.push(v);
                     if let Err(e) = self.config.save() {
-                        self.error = Some(format!("Lỗi lưu cấu hình: {}", e));
+                        self.error = Some(self.i18n.t("status.saving_config_error").replace("{}", &e.to_string()));
                     }
-                    self.status_msg = "Cài đặt thành công!".to_string();
+                    self.status_msg = self.i18n.t("status.install_success");
                     self.is_loading = false;
                 }
                 AppMessage::InstallError(e) => {
@@ -278,7 +304,7 @@ impl eframe::App for NvmApp {
                     let old_base = self.config.base_dir.clone();
                     self.config.base_dir = new_path;
                     self.update_config_and_env(Some(&old_base));
-                    self.status_msg = "Di chuyển dữ liệu thành công!".to_string();
+                    self.status_msg = self.i18n.t("status.move_success");
                     self.is_loading = false;
                     self.move_progress = None;
                 }
@@ -299,31 +325,38 @@ impl eframe::App for NvmApp {
             ui.heading("Node Version Manager");
             
             ui.horizontal(|ui| {
-                ui.label(format!("Đang dùng: {}", self.config.current_version.as_deref().unwrap_or("Chưa chọn")));
-                if ui.button("🔄 Làm mới").clicked() {
+                ui.label(self.i18n.t("ui.current_version").replace("{}", self.config.current_version.as_deref().unwrap_or(&self.i18n.t("ui.not_selected"))));
+                if ui.button(self.i18n.t("ui.refresh")).clicked() {
                     pending_action = Some(Action::Refresh);
                 }
                 ui.separator();
-                ui.small(format!("Lưu tại: {}", self.config.base_dir.display()));
-                if ui.button("📁 Đổi nơi lưu").clicked() {
+                ui.small(self.i18n.t("ui.saved_at").replace("{}", &self.config.base_dir.display().to_string()));
+                if ui.button(self.i18n.t("ui.change_location")).clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_folder() {
                         pending_action = Some(Action::MoveStorage(path));
                     }
+                }
+                
+                ui.separator();
+                let toggle_text = if self.config.language == "vi" { "🌐 EN" } else { "🌐 VI" };
+                if ui.button(toggle_text).clicked() {
+                    let new_lang = if self.config.language == "vi" { "en" } else { "vi" };
+                    pending_action = Some(Action::ChangeLanguage(new_lang.to_string()));
                 }
             });
 
             ui.separator();
 
             ui.horizontal(|ui| {
-                ui.label("Tìm kiếm:");
+                ui.label(self.i18n.t("ui.search"));
                 ui.text_edit_singleline(&mut self.search_query);
-                ui.checkbox(&mut self.lts_only, "Chỉ bản LTS");
+                ui.checkbox(&mut self.lts_only, self.i18n.t("ui.lts_only"));
             });
 
             ui.separator();
 
             if let Some(err) = &self.error {
-                ui.colored_label(egui::Color32::RED, format!("Lỗi: {}", err));
+                ui.colored_label(egui::Color32::RED, self.i18n.t("ui.error_prefix").replace("{}", err));
             }
 
             ui.label(&self.status_msg);
@@ -363,11 +396,11 @@ impl eframe::App for NvmApp {
                                     .spacing([10.0, 8.0])
                                     .striped(true)
                                     .show(ui, |ui| {
-                                        ui.label("Phiên bản");
-                                        ui.label("Kiểu");
-                                        ui.label("Trạng thái");
-                                        ui.label("Dùng chung");
-                                        ui.label("Hành động");
+                                        ui.label(self.i18n.t("ui.version_col"));
+                                        ui.label(self.i18n.t("ui.type_col"));
+                                        ui.label(self.i18n.t("ui.status_col"));
+                                        ui.label(self.i18n.t("ui.shared_col"));
+                                        ui.label(self.i18n.t("ui.action_col"));
                                         ui.end_row();
 
                                         for v in versions {
@@ -387,9 +420,9 @@ impl eframe::App for NvmApp {
                                             }
 
                                             if is_installed {
-                                                ui.colored_label(egui::Color32::from_rgb(100, 200, 255), "✔ Đã tải");
+                                                ui.colored_label(egui::Color32::from_rgb(100, 200, 255), self.i18n.t("ui.downloaded"));
                                             } else {
-                                                ui.label("○ Chưa tải");
+                                                ui.label(self.i18n.t("ui.not_downloaded"));
                                             }
 
                                             if is_installed {
@@ -400,7 +433,7 @@ impl eframe::App for NvmApp {
                                                         pending_action = Some(Action::UpdateConfig);
                                                     } else {
                                                         if let Err(e) = self.config.save() {
-                                                            self.error = Some(format!("Lỗi lưu cấu hình: {}", e));
+                                                            self.error = Some(self.i18n.t("status.saving_config_error").replace("{}", &e.to_string()));
                                                         }
                                                     }
                                                 }
@@ -410,16 +443,19 @@ impl eframe::App for NvmApp {
 
                                             ui.horizontal(|ui| {
                                                 if is_current {
-                                                    ui.label("✅ Đang dùng");
+                                                    ui.label(self.i18n.t("ui.in_use"));
+                                                    if ui.button(self.i18n.t("ui.unuse_btn")).clicked() {
+                                                        pending_action = Some(Action::Unuse);
+                                                    }
                                                 } else if is_installed {
-                                                    if ui.button("🚀 Sử dụng").clicked() {
+                                                    if ui.button(self.i18n.t("ui.use_btn")).clicked() {
                                                         pending_action = Some(Action::Switch(v.version.clone()));
                                                     }
-                                                    if ui.button("🗑 Xóa").clicked() {
+                                                    if ui.button(self.i18n.t("ui.delete_btn")).clicked() {
                                                         pending_action = Some(Action::Uninstall(v.version.clone()));
                                                     }
                                                 } else {
-                                                    if !self.is_loading && ui.button("📥 Cài đặt").clicked() {
+                                                    if !self.is_loading && ui.button(self.i18n.t("ui.install_btn")).clicked() {
                                                         pending_action = Some(Action::Install(v.version.clone()));
                                                     }
                                                 }
@@ -495,19 +531,18 @@ fn is_dir_empty(path: &std::path::Path) -> bool {
 
 fn setup_custom_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    #[cfg(windows)]
-    let font_path = "C:\\Windows\\Fonts\\arial.ttf";
-    #[cfg(unix)]
-    let font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+    
+    // Nhúng thẳng font Inter (hỗ trợ Tiếng Việt cực tốt) vào file exe/binary để ứng dụng chạy mượt trên mọi OS
+    let font_data = include_bytes!("../assets/Inter-Regular.ttf");
 
-    if let Ok(font_data) = std::fs::read(font_path) {
-        fonts.font_data.insert(
-            "sys_font".to_owned(),
-            egui::FontData::from_owned(font_data).into(),
-        );
-        if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-            family.insert(0, "sys_font".to_owned());
-        }
+    fonts.font_data.insert(
+        "inter_font".to_owned(),
+        egui::FontData::from_static(font_data).into(),
+    );
+    
+    if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+        family.insert(0, "inter_font".to_owned());
     }
+    
     ctx.set_fonts(fonts);
 }

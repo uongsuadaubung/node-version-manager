@@ -10,6 +10,12 @@ pub struct AppConfig {
     pub current_version: Option<String>,
     pub version_configs: HashMap<String, bool>,
     pub installed_versions: Vec<String>,
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for AppConfig {
@@ -24,6 +30,7 @@ impl Default for AppConfig {
             current_version: None,
             version_configs: HashMap::new(),
             installed_versions: Vec::new(),
+            language: "en".to_string(),
         }
     }
 }
@@ -35,26 +42,23 @@ impl AppConfig {
         if !conf_dir.exists() {
             fs::create_dir_all(&conf_dir)?;
         }
-        Ok(conf_dir.join("config.json"))
+        Ok(conf_dir.join("config.toml"))
     }
 
     pub fn load() -> Self {
-        match Self::config_file() {
-            Ok(path) => {
-                if path.exists() {
-                    let content = fs::read_to_string(path).unwrap_or_default();
-                    serde_json::from_str(&content).unwrap_or_else(|_| Self::default())
-                } else {
-                    Self::default()
-                }
+        if let Ok(path) = Self::config_file() {
+            if path.exists() {
+                let content = fs::read_to_string(&path).unwrap_or_default();
+                return toml::from_str(&content).unwrap_or_else(|_| Self::default());
             }
-            Err(_) => Self::default(),
         }
+        
+        Self::default()
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
         let path = Self::config_file()?;
-        let content = serde_json::to_string_pretty(self)?;
+        let content = toml::to_string_pretty(self)?;
         fs::write(path, content)?;
         Ok(())
     }

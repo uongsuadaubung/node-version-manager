@@ -1,16 +1,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod version_service;
-mod env_manager;
-mod downloader;
-mod config;
 mod app;
+mod config;
+mod downloader;
+mod env_manager;
 mod utils;
+mod version_service;
+mod i18n;
 
-use eframe::egui;
 use app::NvmApp;
+use eframe::egui;
 
 fn main() -> eframe::Result<()> {
+    // Khắc phục lỗi tương thích Vulkan trên Wayland/Linux bằng cách mặc định dùng OpenGL
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("WGPU_BACKEND").is_err() {
+            unsafe { std::env::set_var("WGPU_BACKEND", "gl") };
+        }
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([600.0, 600.0])
@@ -19,7 +28,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Node Version Manager (Rust)",
+        "Node Version Manager GUI",
         options,
         Box::new(|cc| Ok(Box::new(NvmApp::new(cc)))),
     )
