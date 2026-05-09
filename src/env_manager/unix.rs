@@ -10,62 +10,59 @@ pub fn update_user_path(
 ) -> anyhow::Result<()> {
     let user_dirs = UserDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
     let home = user_dirs.home_dir();
-    let app_config_dir = home.join(".nvm-rust");
+    let farm_dir = home.join(".local").join("bin");
     
-    if !app_config_dir.exists() {
-        let _ = fs::create_dir_all(&app_config_dir);
+    if !farm_dir.exists() {
+        let _ = fs::create_dir_all(&farm_dir);
     }
 
-    let current_node_link = app_config_dir.join("current_node");
-    let current_modules_link = app_config_dir.join("current_modules");
-
-    // Cập nhật Symlink cho Node
-    let _ = fs::remove_file(&current_node_link);
-    if let Some(nd) = node_dir {
-        let _ = std::os::unix::fs::symlink(nd, &current_node_link);
-    }
-
-    // Cập nhật Symlink cho Global Modules
-    let _ = fs::remove_file(&current_modules_link);
-    if let Some(m_dir) = modules_dir {
-        let _ = std::os::unix::fs::symlink(m_dir, &current_modules_link);
-    }
-
-    // Cập nhật tĩnh PATH vào các file cấu hình Shell
-    for shell_rc in [".bashrc", ".zshrc", ".profile"] {
-        let config_path = home.join(shell_rc);
-        if !config_path.exists() { continue; }
-
-        let content = fs::read_to_string(&config_path).unwrap_or_default();
-        
-        // Xóa block cũ nếu có
-        let mut lines: Vec<String> = Vec::new();
-        let mut in_block = false;
-        for line in content.lines() {
-            if line.contains("# >>> nvm-rust >>>") {
-                in_block = true;
-                continue;
-            }
-            if line.contains("# <<< nvm-rust <<<") {
-                in_block = false;
-                continue;
-            }
-            if !in_block {
-                lines.push(line.to_string());
+    // Dọn dẹp symlink cũ trong farm_dir (xóa những symlink trỏ về nvm-rust hoặc base_dir cũ/mới)
+    if let Ok(entries) = fs::read_dir(&farm_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_symlink() {
+                if let Ok(target) = fs::read_link(&path) {
+                    let is_old_dir = _old_base_dir.map_or(false, |old| target.starts_with(old));
+                    let is_new_dir = target.starts_with(_base_dir);
+                    
+                    if is_old_dir || is_new_dir {
+                        let _ = fs::remove_file(&path);
+                    }
+                }
             }
         }
-
-        // Luôn ghi script kiểm tra chống trùng lặp (giống cách rustup làm)
-        lines.push("# >>> nvm-rust >>>".to_string());
-        lines.push("NVM_RUST_PATH=\"$HOME/.nvm-rust/current_node/bin:$HOME/.nvm-rust/current_modules/bin\"".to_string());
-        lines.push("case \":${PATH}:\" in".to_string());
-        lines.push("    *\":${NVM_RUST_PATH}:\"*) ;;".to_string());
-        lines.push("    *) export PATH=\"${NVM_RUST_PATH}:$PATH\" ;;".to_string());
-        lines.push("esac".to_string());
-        lines.push("# <<< nvm-rust <<<".to_string());
-
-        let _ = fs::write(config_path, lines.join("\n") + "\n");
     }
+
+    let create_symlinks = |dir: &PathBuf, overwrite_allowed: bool| {
+        let bin_dir = dir.join("bin");
+        if bin_dir.exists() {
+            if let Ok(entries) = fs::read_dir(&bin_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() || path.is_symlink() {
+                        if let Some(file_name) = path.file_name() {
+                            let link_path = farm_dir.join(file_name);
+                            if overwrite_allowed || !link_path.exists() {
+                                let _ = std::os::unix::fs::symlink(&path, &link_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // Tạo lại symlink cho Node
+    if let Some(nd) = node_dir {
+        create_symlinks(nd, true);
+    }
+
+    // Tạo lại symlink cho Global Modules
+    if let Some(m_dir) = modules_dir {
+        create_symlinks(m_dir, false);
+    }
+
+
     
     Ok(())
 }

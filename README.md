@@ -63,7 +63,8 @@ cargo zigbuild --target x86_64-unknown-linux-gnu --release
 - **Hệ thống nén:** `zip-rs`, `tar`, `flate2`.
 
 ## 🛡️ Lưu ý trên Linux
-Sau khi chuyển đổi phiên bản Node, bạn có thể cần chạy lệnh `source ~/.bashrc` (hoặc `.zshrc`) để cập nhật PATH ngay lập tức trong terminal hiện tại.
+Công cụ sử dụng kiến trúc **Symlink Farm** tại thư mục `~/.local/bin`. Mọi binary (`node`, `npm`, `npx`...) đều được tự động tạo symlink vào đây, giúp giữ cho các file cấu hình hệ thống (`.bashrc`, `.profile`) luôn sạch sẽ.
+Bạn có thể **sử dụng Node ngay lập tức** trên mọi terminal sau khi chuyển đổi phiên bản mà không cần phải chạy lại lệnh `source` hay khởi động lại shell. Chỉ cần đảm bảo `~/.local/bin` có sẵn trong biến môi trường `$PATH` của bạn (hầu hết các bản phân phối Linux đều đã có sẵn).
 
 ---
 *Phát triển với ❤️ bởi uongsuadaubung*

@@ -329,19 +329,32 @@ impl eframe::App for NvmApp {
                 if ui.button(self.i18n.t("ui.refresh")).clicked() {
                     pending_action = Some(Action::Refresh);
                 }
+                
                 ui.separator();
+                let mut selected_lang = self.config.language.clone();
+                let lang_text = match selected_lang.as_str() {
+                    "vi" => "🌐 Tiếng Việt",
+                    _ => "🌐 English",
+                };
+                
+                egui::ComboBox::from_id_salt("lang_dropdown")
+                    .selected_text(lang_text)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_value(&mut selected_lang, "en".to_string(), "English").changed() {
+                            pending_action = Some(Action::ChangeLanguage("en".to_string()));
+                        }
+                        if ui.selectable_value(&mut selected_lang, "vi".to_string(), "Tiếng Việt").changed() {
+                            pending_action = Some(Action::ChangeLanguage("vi".to_string()));
+                        }
+                    });
+            });
+
+            ui.horizontal(|ui| {
                 ui.small(self.i18n.t("ui.saved_at").replace("{}", &self.config.base_dir.display().to_string()));
                 if ui.button(self.i18n.t("ui.change_location")).clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_folder() {
                         pending_action = Some(Action::MoveStorage(path));
                     }
-                }
-                
-                ui.separator();
-                let toggle_text = if self.config.language == "vi" { "🌐 EN" } else { "🌐 VI" };
-                if ui.button(toggle_text).clicked() {
-                    let new_lang = if self.config.language == "vi" { "en" } else { "vi" };
-                    pending_action = Some(Action::ChangeLanguage(new_lang.to_string()));
                 }
             });
 

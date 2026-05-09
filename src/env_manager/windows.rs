@@ -38,7 +38,7 @@ pub fn update_user_path(
         if let Some(ref old) = old_base_norm {
             if p_norm.contains(old) { return false; }
         }
-        !p.contains(".nvm-rust")
+        true
     });
     
     if let Some(n_path) = node_path {
