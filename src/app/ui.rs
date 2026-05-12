@@ -119,10 +119,10 @@ impl eframe::App for NvmApp {
                         .t("ui.saved_at")
                         .replace("{}", &self.config.base_dir.display().to_string()),
                 );
-                if ui.button(self.i18n.t("ui.change_location")).clicked() {
-                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                        pending_action = Some(Action::MoveStorage(path));
-                    }
+                if ui.button(self.i18n.t("ui.change_location")).clicked()
+                    && let Some(path) = rfd::FileDialog::new().pick_folder()
+                {
+                    pending_action = Some(Action::MoveStorage(path));
                 }
             });
 

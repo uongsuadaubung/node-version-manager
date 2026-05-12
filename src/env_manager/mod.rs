@@ -1,6 +1,6 @@
 use directories::UserDirs;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[cfg(windows)]
 mod windows;
@@ -12,7 +12,7 @@ mod unix;
 #[cfg(unix)]
 pub use unix::update_user_path;
 
-pub fn update_npmrc(modules_path: &PathBuf, enabled: bool) -> anyhow::Result<()> {
+pub fn update_npmrc(modules_path: &Path, enabled: bool) -> anyhow::Result<()> {
     let user_dirs =
         UserDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
     let npmrc_path = user_dirs.home_dir().join(".npmrc");

@@ -47,11 +47,9 @@ impl AppConfig {
     }
 
     pub fn load() -> Self {
-        if let Ok(path) = Self::config_file() {
-            if path.exists() {
-                let content = fs::read_to_string(&path).unwrap_or_default();
-                return toml::from_str(&content).unwrap_or_else(|_| Self::default());
-            }
+        if let Ok(path) = Self::config_file() && path.exists() {
+            let content = fs::read_to_string(&path).unwrap_or_default();
+            return toml::from_str(&content).unwrap_or_else(|_| Self::default());
         }
 
         Self::default()

@@ -211,14 +211,13 @@ fn copy_dir_parallel(
 
             let now_ms = start.elapsed().as_millis() as u64;
             let last = last_update_ms.load(Ordering::Relaxed);
-            if now_ms.saturating_sub(last) >= 100 {
-                if last_update_ms
+            if now_ms.saturating_sub(last) >= 100
+                && last_update_ms
                     .compare_exchange(last, now_ms, Ordering::Relaxed, Ordering::Relaxed)
                     .is_ok()
-                {
-                    let n = shared_copied.load(Ordering::Relaxed);
-                    tx.send(AppMessage::Storage(StorageMsg::Progress(n.min(total), total))).ok();
-                }
+            {
+                let n = shared_copied.load(Ordering::Relaxed);
+                tx.send(AppMessage::Storage(StorageMsg::Progress(n.min(total), total))).ok();
             }
             Ok(())
         })?;

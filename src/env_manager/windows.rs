@@ -1,5 +1,5 @@
 use crate::utils;
-use std::path::PathBuf;
+use std::path::Path;
 use std::ptr;
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -9,10 +9,10 @@ use winreg::RegKey;
 use winreg::enums::*;
 
 pub fn update_user_path(
-    node_dir: Option<&PathBuf>,
-    modules_dir: Option<&PathBuf>,
-    base_dir: &PathBuf,
-    old_base_dir: Option<&PathBuf>,
+    node_dir: Option<&Path>,
+    modules_dir: Option<&Path>,
+    base_dir: &Path,
+    old_base_dir: Option<&Path>,
 ) -> anyhow::Result<()> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let env = hkcu.open_subkey_with_flags("Environment", KEY_READ | KEY_WRITE)?;
@@ -34,23 +34,17 @@ pub fn update_user_path(
 
     paths.retain(|p| {
         let p_norm = utils::normalize_path(p);
-        if let Some(ref n) = node_norm {
-            if p_norm == *n {
-                return false;
-            }
+        if let Some(ref n) = node_norm && p_norm == *n {
+            return false;
         }
-        if let Some(ref m) = mod_norm {
-            if p_norm == *m {
-                return false;
-            }
+        if let Some(ref m) = mod_norm && p_norm == *m {
+            return false;
         }
         if p_norm.contains(&base_norm) {
             return false;
         }
-        if let Some(ref old) = old_base_norm {
-            if p_norm.contains(old) {
-                return false;
-            }
+        if let Some(ref old) = old_base_norm && p_norm.contains(old) {
+            return false;
         }
         true
     });

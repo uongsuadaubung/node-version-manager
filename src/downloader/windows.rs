@@ -1,11 +1,11 @@
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 pub fn extract_archive(
-    archive_path: &PathBuf,
-    dest_base: &PathBuf,
+    archive_path: &Path,
+    dest_base: &Path,
     _dir_name: &str,
 ) -> anyhow::Result<PathBuf> {
     let mut root = PathBuf::new();
@@ -19,19 +19,15 @@ pub fn extract_archive(
             None => continue,
         };
 
-        if i == 0 {
-            if let Some(first_part) = outpath.components().nth(dest_base.components().count()) {
-                root = dest_base.join(first_part.as_os_str());
-            }
+        if i == 0 && let Some(first_part) = outpath.components().nth(dest_base.components().count()) {
+            root = dest_base.join(first_part.as_os_str());
         }
 
         if (*file.name()).ends_with('/') {
             fs::create_dir_all(&outpath)?;
         } else {
-            if let Some(p) = outpath.parent() {
-                if !p.exists() {
-                    fs::create_dir_all(&p)?;
-                }
+            if let Some(p) = outpath.parent() && !p.exists() {
+                fs::create_dir_all(p)?;
             }
             let mut outfile = fs::File::create(&outpath)?;
             io::copy(&mut file, &mut outfile)?;

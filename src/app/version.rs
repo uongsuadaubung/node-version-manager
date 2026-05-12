@@ -33,15 +33,13 @@ impl NvmApp {
 
                 let modules_dir = if use_shared {
                     let m_dir = self.config.modules_dir();
-                    if !m_dir.exists() {
-                        if let Err(e) = std::fs::create_dir_all(&m_dir) {
-                            self.error = Some(
-                                self.i18n
-                                    .t("status.create_modules_error")
-                                    .replace("{}", &e.to_string()),
-                            );
-                            return;
-                        }
+                    if !m_dir.exists() && let Err(e) = std::fs::create_dir_all(&m_dir) {
+                        self.error = Some(
+                            self.i18n
+                                .t("status.create_modules_error")
+                                .replace("{}", &e.to_string()),
+                        );
+                        return;
                     }
                     Some(m_dir)
                 } else {
@@ -49,10 +47,10 @@ impl NvmApp {
                 };
 
                 if let Err(e) = env_manager::update_user_path(
-                    Some(&version_path),
-                    modules_dir.as_ref(),
-                    &self.config.base_dir,
-                    old_base_dir,
+                    Some(version_path.as_path()),
+                    modules_dir.as_deref(),
+                    self.config.base_dir.as_path(),
+                    old_base_dir.map(|p| p.as_path()),
                 ) {
                     self.error = Some(
                         self.i18n
@@ -60,7 +58,7 @@ impl NvmApp {
                             .replace("{}", &e.to_string()),
                     );
                 }
-                if let Err(e) = env_manager::update_npmrc(&self.config.modules_dir(), use_shared) {
+                if let Err(e) = env_manager::update_npmrc(self.config.modules_dir().as_path(), use_shared) {
                     self.error = Some(
                         self.i18n
                             .t("status.update_npmrc_error")
@@ -70,7 +68,7 @@ impl NvmApp {
             }
         } else {
             if let Err(e) =
-                env_manager::update_user_path(None, None, &self.config.base_dir, old_base_dir)
+                env_manager::update_user_path(None, None, self.config.base_dir.as_path(), old_base_dir.map(|p| p.as_path()))
             {
                 self.error = Some(
                     self.i18n
@@ -78,7 +76,7 @@ impl NvmApp {
                         .replace("{}", &e.to_string()),
                 );
             }
-            if let Err(e) = env_manager::update_npmrc(&self.config.modules_dir(), false) {
+            if let Err(e) = env_manager::update_npmrc(self.config.modules_dir().as_path(), false) {
                 self.error = Some(
                     self.i18n
                         .t("status.update_npmrc_error")
