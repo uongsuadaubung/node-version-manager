@@ -11,10 +11,11 @@ impl I18n {
         } else {
             include_str!("../locales/vi.toml")
         };
-        
-        let toml_val: toml::Value = toml::from_str(content).expect("Invalid TOML");
+
+        let toml_val: toml::Value =
+            toml::from_str(content).unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new()));
         let mut strings = HashMap::new();
-        
+
         if let Some(table) = toml_val.as_table() {
             for (section_name, section) in table {
                 if let Some(section_table) = section.as_table() {
@@ -26,11 +27,14 @@ impl I18n {
                 }
             }
         }
-        
+
         Self { strings }
     }
 
     pub fn t(&self, key: &str) -> String {
-        self.strings.get(key).cloned().unwrap_or_else(|| key.to_string())
+        self.strings
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| key.to_string())
     }
 }

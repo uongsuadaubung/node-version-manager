@@ -3,11 +3,15 @@ use std::io;
 use std::path::PathBuf;
 use zip::ZipArchive;
 
-pub fn extract_archive(archive_path: &PathBuf, dest_base: &PathBuf, _dir_name: &str) -> anyhow::Result<PathBuf> {
+pub fn extract_archive(
+    archive_path: &PathBuf,
+    dest_base: &PathBuf,
+    _dir_name: &str,
+) -> anyhow::Result<PathBuf> {
     let mut root = PathBuf::new();
     let zip_file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(zip_file)?;
-    
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let outpath = match file.enclosed_name() {

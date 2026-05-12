@@ -4,9 +4,9 @@ mod app;
 mod config;
 mod downloader;
 mod env_manager;
+mod i18n;
 mod utils;
 mod version_service;
-mod i18n;
 
 use app::NvmApp;
 use eframe::egui;

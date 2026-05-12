@@ -1,8 +1,8 @@
+use directories::UserDirs;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use directories::UserDirs;
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AppConfig {
@@ -24,20 +24,21 @@ impl Default for AppConfig {
         let base_dir = UserDirs::new()
             .map(|u| u.home_dir().join(".nvm-rust"))
             .unwrap_or_else(|| PathBuf::from(".nvm-rust"));
-        
+
         AppConfig {
             base_dir,
             current_version: None,
             version_configs: HashMap::new(),
             installed_versions: Vec::new(),
-            language: "en".to_string(),
+            language: default_language(),
         }
     }
 }
 
 impl AppConfig {
     pub fn config_file() -> anyhow::Result<PathBuf> {
-        let user_dirs = UserDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+        let user_dirs =
+            UserDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
         let conf_dir = user_dirs.home_dir().join(".nvm-rust");
         if !conf_dir.exists() {
             fs::create_dir_all(&conf_dir)?;
@@ -52,7 +53,7 @@ impl AppConfig {
                 return toml::from_str(&content).unwrap_or_else(|_| Self::default());
             }
         }
-        
+
         Self::default()
     }
 
@@ -62,11 +63,11 @@ impl AppConfig {
         fs::write(path, content)?;
         Ok(())
     }
-    
+
     pub fn versions_dir(&self) -> PathBuf {
         self.base_dir.join("versions")
     }
-    
+
     pub fn modules_dir(&self) -> PathBuf {
         self.base_dir.join("modules")
     }

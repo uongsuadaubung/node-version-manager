@@ -1,19 +1,20 @@
-use std::path::PathBuf;
-use std::fs;
 use directories::UserDirs;
+use std::fs;
+use std::path::PathBuf;
 
 pub fn update_user_path(
-    node_dir: Option<&PathBuf>, 
-    modules_dir: Option<&PathBuf>, 
+    node_dir: Option<&PathBuf>,
+    modules_dir: Option<&PathBuf>,
     _base_dir: &PathBuf,
-    _old_base_dir: Option<&PathBuf>
+    _old_base_dir: Option<&PathBuf>,
 ) -> anyhow::Result<()> {
-    let user_dirs = UserDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
+    let user_dirs =
+        UserDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
     let home = user_dirs.home_dir();
     let farm_dir = home.join(".local").join("bin");
-    
+
     if !farm_dir.exists() {
-        let _ = fs::create_dir_all(&farm_dir);
+        fs::create_dir_all(&farm_dir).ok();
     }
 
     // Dọn dẹp symlink cũ trong farm_dir (xóa những symlink trỏ về nvm-rust hoặc base_dir cũ/mới)
@@ -24,9 +25,9 @@ pub fn update_user_path(
                 if let Ok(target) = fs::read_link(&path) {
                     let is_old_dir = _old_base_dir.map_or(false, |old| target.starts_with(old));
                     let is_new_dir = target.starts_with(_base_dir);
-                    
+
                     if is_old_dir || is_new_dir {
-                        let _ = fs::remove_file(&path);
+                        fs::remove_file(&path).ok();
                     }
                 }
             }
@@ -43,7 +44,7 @@ pub fn update_user_path(
                         if let Some(file_name) = path.file_name() {
                             let link_path = farm_dir.join(file_name);
                             if overwrite_allowed || !link_path.exists() {
-                                let _ = std::os::unix::fs::symlink(&path, &link_path);
+                                std::os::unix::fs::symlink(&path, &link_path).ok();
                             }
                         }
                     }
@@ -62,7 +63,5 @@ pub fn update_user_path(
         create_symlinks(m_dir, false);
     }
 
-
-    
     Ok(())
 }
