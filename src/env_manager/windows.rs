@@ -1,12 +1,13 @@
+use crate::anyhow;
 use crate::utils;
-use std::path::Path;
-use std::ptr;
-use windows::Win32::Foundation::{LPARAM, WPARAM};
-use windows::Win32::UI::WindowsAndMessaging::{
+use crate::windows::Win32::Foundation::{LPARAM, WPARAM};
+use crate::windows::Win32::UI::WindowsAndMessaging::{
     HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
 };
-use winreg::RegKey;
-use winreg::enums::*;
+use crate::winreg::RegKey;
+use crate::winreg::enums::*;
+use std::path::Path;
+use std::ptr;
 
 pub fn update_user_path(
     node_dir: Option<&Path>,

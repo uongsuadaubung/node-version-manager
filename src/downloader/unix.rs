@@ -1,17 +1,22 @@
-use flate2::read::GzDecoder;
-use std::fs;
-use std::path::PathBuf;
-use tar::Archive;
+use crate::anyhow;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub fn extract_archive(
-    archive_path: &PathBuf,
-    dest_base: &PathBuf,
+    archive_path: &Path,
+    dest_base: &Path,
     dir_name: &str,
 ) -> anyhow::Result<PathBuf> {
-    let tar_gz = fs::File::open(archive_path)?;
-    let tar = GzDecoder::new(tar_gz);
-    let mut archive = Archive::new(tar);
+    let status = Command::new("tar")
+        .arg("-xf")
+        .arg(archive_path)
+        .arg("-C")
+        .arg(dest_base)
+        .status()?;
 
-    archive.unpack(dest_base)?;
+    if !status.success() {
+        anyhow::bail!("Extraction failed with exit code: {:?}", status.code());
+    }
+
     Ok(dest_base.join(dir_name))
 }

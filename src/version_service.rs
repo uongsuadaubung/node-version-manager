@@ -1,4 +1,4 @@
-use reqwest::blocking::Client;
+use crate::anyhow;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -29,17 +29,11 @@ impl NodeVersion {
 }
 
 pub fn fetch_node_versions() -> anyhow::Result<Vec<NodeVersion>> {
-    let client = Client::new();
-    let res = client
-        .get("https://nodejs.org/dist/index.json")
-        .header("User-Agent", "nvm-rust-gui")
-        .send()?;
+    let res = ureq::get("https://nodejs.org/dist/index.json")
+        .set("User-Agent", "nvm-rust-gui")
+        .call()?;
 
-    let versions: Vec<NodeVersion> = res.json()?;
-
-    // Mặc định JSON từ Node.js đã sắp xếp từ mới đến cũ,
-    // nhưng ta có thể đảm bảo lại nếu cần.
-    // Ở đây ta giữ nguyên vì Node.js API trả về bản mới nhất ở đầu.
-
+    let versions: Vec<NodeVersion> = res.into_json()?;
     Ok(versions)
 }
+

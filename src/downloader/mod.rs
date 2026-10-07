@@ -1,6 +1,6 @@
+use crate::anyhow;
 use crate::app::{AppMessage, DownloadMsg};
 use crate::utils;
-use reqwest::blocking::Client;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -33,19 +33,20 @@ pub fn download_and_extract(
         version, dir_name, extension
     );
 
-    let client = Client::new();
-    let mut response = client.get(url).send()?;
+    let response = ureq::get(&url)
+        .set("User-Agent", "nvm-rust-gui")
+        .call()?;
 
-    if !response.status().is_success() {
+    if response.status() != 200 {
         anyhow::bail!("Download failed with status: {}", response.status());
     }
 
     let total_bytes: u64 = response
-        .headers()
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
+        .header("Content-Length")
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
+
+    let mut reader = response.into_reader();
 
     if !dest_base.exists() {
         fs::create_dir_all(dest_base)?;
@@ -59,7 +60,7 @@ pub fn download_and_extract(
     let mut last_update = Instant::now();
 
     loop {
-        let n = response.read(&mut buf)?;
+        let n = reader.read(&mut buf)?;
         if n == 0 {
             break;
         }

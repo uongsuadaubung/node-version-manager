@@ -12,19 +12,31 @@ impl I18n {
             include_str!("../locales/vi.toml")
         };
 
-        let toml_val: toml::Value =
-            toml::from_str(content).unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new()));
         let mut strings = HashMap::new();
+        let mut current_section = String::new();
 
-        if let Some(table) = toml_val.as_table() {
-            for (section_name, section) in table {
-                if let Some(section_table) = section.as_table() {
-                    for (k, v) in section_table {
-                        if let Some(s) = v.as_str() {
-                            strings.insert(format!("{}.{}", section_name, k), s.to_string());
-                        }
-                    }
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with('[') && line.ends_with(']') {
+                current_section = line[1..line.len() - 1].trim().to_string();
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                let key = k.trim();
+                let mut val = v.trim();
+                if val.starts_with('"') && val.ends_with('"') && val.len() >= 2 {
+                    val = &val[1..val.len() - 1];
                 }
+                let unescaped = val.replace("\\\"", "\"").replace("\\\\", "\\");
+                let full_key = if current_section.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{}.{}", current_section, key)
+                };
+                strings.insert(full_key, unescaped);
             }
         }
 

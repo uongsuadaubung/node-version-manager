@@ -1,37 +1,28 @@
-use std::fs;
-use std::io;
+use crate::anyhow;
 use std::path::{Path, PathBuf};
-use zip::ZipArchive;
+use std::process::Command;
 
 pub fn extract_archive(
     archive_path: &Path,
     dest_base: &Path,
-    _dir_name: &str,
+    dir_name: &str,
 ) -> anyhow::Result<PathBuf> {
-    let mut root = PathBuf::new();
-    let zip_file = fs::File::open(archive_path)?;
-    let mut archive = ZipArchive::new(zip_file)?;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let outpath = match file.enclosed_name() {
-            Some(path) => dest_base.join(path),
-            None => continue,
-        };
+    let mut cmd = Command::new("tar");
+    cmd.creation_flags(CREATE_NO_WINDOW);
 
-        if i == 0 && let Some(first_part) = outpath.components().nth(dest_base.components().count()) {
-            root = dest_base.join(first_part.as_os_str());
-        }
+    let status = cmd
+        .arg("-xf")
+        .arg(archive_path)
+        .arg("-C")
+        .arg(dest_base)
+        .status()?;
 
-        if (*file.name()).ends_with('/') {
-            fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(p) = outpath.parent() && !p.exists() {
-                fs::create_dir_all(p)?;
-            }
-            let mut outfile = fs::File::create(&outpath)?;
-            io::copy(&mut file, &mut outfile)?;
-        }
+    if !status.success() {
+        anyhow::bail!("Extraction failed with exit code: {:?}", status.code());
     }
-    Ok(root)
+
+    Ok(dest_base.join(dir_name))
 }
