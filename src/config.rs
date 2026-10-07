@@ -1,17 +1,15 @@
 use crate::anyhow;
 use crate::directories::UserDirs;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppConfig {
     pub base_dir: PathBuf,
     pub current_version: Option<String>,
     pub version_configs: HashMap<String, bool>,
     pub installed_versions: Vec<String>,
-    #[serde(default = "default_language")]
     pub language: String,
 }
 

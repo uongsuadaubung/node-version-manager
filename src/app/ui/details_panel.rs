@@ -56,7 +56,7 @@ pub fn draw_details_panel(f: &mut Frame, app: &NvmApp, version: Option<NodeVersi
         let lts_info = if let Some(name) = v.lts_name() {
             app.i18n.t("ui.details_lts_yes").replace("{}", name)
         } else {
-            app.i18n.t("ui.details_lts_no")
+            app.i18n.t("ui.details_lts_no").to_string()
         };
         lines.push(Line::from(vec![
             Span::styled(format!("{} ", app.i18n.t("ui.details_lts")), Style::default().fg(Color::DarkGray)),

@@ -43,10 +43,10 @@ impl I18n {
         Self { strings }
     }
 
-    pub fn t(&self, key: &str) -> String {
+    pub fn t<'a>(&'a self, key: &'a str) -> &'a str {
         self.strings
             .get(key)
-            .cloned()
-            .unwrap_or_else(|| key.to_string())
+            .map(|s| s.as_str())
+            .unwrap_or(key)
     }
 }

@@ -20,7 +20,7 @@ pub fn draw_footer(f: &mut Frame, app: &NvmApp, area: Rect) {
         let is_installed = app.config.installed_versions.contains(&v.version);
         let is_in_use = app.config.current_version.as_deref() == Some(&v.version);
 
-        let mut actions: Vec<(&str, String, Color)> = Vec::new();
+        let mut actions: Vec<(&str, &str, Color)> = Vec::new();
         if !is_installed {
             // Chưa cài đặt: hiện [Enter] Cài & Dùng, [i] Cài đặt (KHÔNG hiện d, s, u)
             actions.push(("Enter", app.i18n.t("ui.btn_install_and_use"), Color::LightGreen));
@@ -54,7 +54,7 @@ pub fn draw_footer(f: &mut Frame, app: &NvmApp, area: Rect) {
     }
 
     // --- Tầng 2: Menu điều khiển mặc định (luôn luôn hiển thị) ---
-    let default_keys: Vec<(&str, String)> = vec![
+    let default_keys: Vec<(&str, &str)> = vec![
         ("↑/↓", app.i18n.t("ui.nav_select")),
         ("1-3", app.i18n.t("ui.nav_tab")),
         ("/", app.i18n.t("ui.nav_search")),

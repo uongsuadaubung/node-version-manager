@@ -154,7 +154,7 @@ impl NvmApp {
     pub fn unuse_version(&mut self) {
         self.config.current_version = None;
         self.update_config_and_env(None);
-        self.status_msg = self.i18n.t("status.unused_version");
+        self.status_msg = self.i18n.t("status.unused_version").to_string();
     }
 
     pub fn toggle_shared_mode(&mut self) {

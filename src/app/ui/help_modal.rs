@@ -22,7 +22,7 @@ pub fn draw_help_modal(f: &mut Frame, app: &NvmApp) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let shortcuts: Vec<(&str, String)> = vec![
+    let shortcuts: Vec<(&str, &str)> = vec![
         ("↑ / k", app.i18n.t("ui.help_nav")),
         ("↓ / j", app.i18n.t("ui.help_nav")),
         ("PgUp / PgDn", app.i18n.t("ui.help_page_scroll")),

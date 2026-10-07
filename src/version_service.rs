@@ -1,14 +1,15 @@
 use crate::anyhow;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum LtsStatus {
+    #[allow(dead_code)]
     Bool(bool),
     Named(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct NodeVersion {
     pub version: String,
     pub date: String,
@@ -29,11 +30,8 @@ impl NodeVersion {
 }
 
 pub fn fetch_node_versions() -> anyhow::Result<Vec<NodeVersion>> {
-    let res = ureq::get("https://nodejs.org/dist/index.json")
-        .set("User-Agent", "nvm-rust-gui")
-        .call()?;
-
-    let versions: Vec<NodeVersion> = res.into_json()?;
+    let bytes = crate::fetch::fetch_bytes("https://nodejs.org/dist/index.json")?;
+    let versions: Vec<NodeVersion> = serde_json::from_slice(&bytes)?;
     Ok(versions)
 }
 

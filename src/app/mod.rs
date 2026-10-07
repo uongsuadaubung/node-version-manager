@@ -106,7 +106,7 @@ impl NvmApp {
             download_version: None,
             auto_switch_on_install: None,
             error: None,
-            status_msg: i18n.t("status.ready"),
+            status_msg: i18n.t("status.ready").to_string(),
             confirm_delete: None,
             is_changing_storage: false,
             storage_input: String::new(),
@@ -180,7 +180,7 @@ impl NvmApp {
         self.config.base_dir = new_path;
         self.rescan_installed_versions();
         self.update_config_and_env(Some(&old_base));
-        self.status_msg = self.i18n.t("status.storage_updated");
+        self.status_msg = self.i18n.t("status.storage_updated").to_string();
     }
 
     pub fn handle_messages(&mut self) {
@@ -206,7 +206,7 @@ impl NvmApp {
                         self.is_loading = false;
                         self.download_progress = None;
                         self.download_version = None;
-                        self.status_msg = self.i18n.t("status.install_success");
+                        self.status_msg = self.i18n.t("status.install_success").to_string();
 
                         if self.auto_switch_on_install.as_deref() == Some(&v) {
                             self.auto_switch_on_install = None;
@@ -233,7 +233,7 @@ impl NvmApp {
     }
 
     pub fn filtered_versions(&self) -> Vec<&NodeVersion> {
-        let q = self.search_query.trim().to_lowercase();
+        let q = self.search_query.trim();
         self.versions
             .iter()
             .filter(|v| {
@@ -247,13 +247,21 @@ impl NvmApp {
                 if q.is_empty() {
                     return true;
                 }
-                let ver_clean = v.version.to_lowercase();
-                let ver_num = ver_clean.trim_start_matches('v');
-                if ver_clean.contains(&q) || ver_num.contains(&q) {
+                let contains_ascii_ci = |haystack: &str| -> bool {
+                    if q.len() > haystack.len() {
+                        return false;
+                    }
+                    haystack
+                        .as_bytes()
+                        .windows(q.len())
+                        .any(|w| w.eq_ignore_ascii_case(q.as_bytes()))
+                };
+                let ver_num = v.version.trim_start_matches('v');
+                if contains_ascii_ci(&v.version) || contains_ascii_ci(ver_num) {
                     return true;
                 }
                 if let Some(lts_name) = v.lts_name()
-                    && lts_name.to_lowercase().contains(&q)
+                    && contains_ascii_ci(lts_name)
                 {
                     return true;
                 }
@@ -316,7 +324,7 @@ impl NvmApp {
         self.config.language = next_lang.to_string();
         self.i18n = I18n::new(next_lang);
         self.update_config_and_env(None);
-        self.status_msg = self.i18n.t("status.lang_changed");
+        self.status_msg = self.i18n.t("status.lang_changed").to_string();
     }
 
     pub fn selected_version(&self) -> Option<NodeVersion> {

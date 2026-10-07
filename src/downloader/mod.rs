@@ -33,20 +33,14 @@ pub fn download_and_extract(
         version, dir_name, extension
     );
 
-    let response = ureq::get(&url)
-        .set("User-Agent", "nvm-rust-gui")
-        .call()?;
+    let total_bytes = crate::fetch::get_content_length(&url);
 
-    if response.status() != 200 {
-        anyhow::bail!("Download failed with status: {}", response.status());
-    }
+    let mut child = crate::fetch::stream_download(&url)?;
 
-    let total_bytes: u64 = response
-        .header("Content-Length")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-
-    let mut reader = response.into_reader();
+    let mut reader = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to pipe curl output"))?;
 
     if !dest_base.exists() {
         fs::create_dir_all(dest_base)?;
@@ -73,6 +67,13 @@ pub fn download_and_extract(
             last_update = Instant::now();
         }
     }
+
+    drop(file);
+    let status = child.wait()?;
+    if !status.success() {
+        anyhow::bail!("Download failed with curl exit code: {:?}", status.code());
+    }
+
     // Gửi lần cuối để cập nhật 100%
     tx.send(AppMessage::Download(DownloadMsg::Progress(downloaded, total_bytes)))
         .ok();

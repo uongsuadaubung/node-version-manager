@@ -17,6 +17,7 @@ mod app;
 mod config;
 mod downloader;
 mod env_manager;
+mod fetch;
 mod i18n;
 mod utils;
 mod version_service;
@@ -24,12 +25,15 @@ mod version_service;
 use std::io::stdout;
 use std::time::Duration;
 
-use crossterm::{
-    ExecutableCommand,
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+use ratatui::{
+    Terminal,
+    backend::CrosstermBackend,
+    crossterm::{
+        ExecutableCommand,
+        event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+        terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    },
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
 
 use app::{NvmApp, Tab, ui};
 

@@ -17,6 +17,7 @@ pub mod app;
 pub mod config;
 pub mod downloader;
 pub mod env_manager;
+pub mod fetch;
 pub mod i18n;
 pub mod utils;
 pub mod version_service;
