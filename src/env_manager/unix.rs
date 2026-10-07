@@ -1,13 +1,13 @@
 use crate::anyhow;
 use crate::directories::UserDirs;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub fn update_user_path(
-    node_dir: Option<&PathBuf>,
-    modules_dir: Option<&PathBuf>,
-    _base_dir: &PathBuf,
-    _old_base_dir: Option<&PathBuf>,
+    node_dir: Option<&Path>,
+    modules_dir: Option<&Path>,
+    _base_dir: &Path,
+    _old_base_dir: Option<&Path>,
 ) -> anyhow::Result<()> {
     let user_dirs =
         UserDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
@@ -24,7 +24,7 @@ pub fn update_user_path(
             let path = entry.path();
             if path.is_symlink() {
                 if let Ok(target) = fs::read_link(&path) {
-                    let is_old_dir = _old_base_dir.map_or(false, |old| target.starts_with(old));
+                    let is_old_dir = _old_base_dir.is_some_and(|old| target.starts_with(old));
                     let is_new_dir = target.starts_with(_base_dir);
 
                     if is_old_dir || is_new_dir {
@@ -35,7 +35,7 @@ pub fn update_user_path(
         }
     }
 
-    let create_symlinks = |dir: &PathBuf, overwrite_allowed: bool| {
+    let create_symlinks = |dir: &Path, overwrite_allowed: bool| {
         let bin_dir = dir.join("bin");
         if bin_dir.exists() {
             if let Ok(entries) = fs::read_dir(&bin_dir) {
